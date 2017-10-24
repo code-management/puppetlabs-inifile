@@ -22,8 +22,12 @@ describe 'ini_setting resource' do
     end
 
     describe file(path) do
-      it { should be_file }
-      its(:content) { should match content }
+      it { is_expected.to be_file }
+
+      describe '#content' do
+        subject { super().content }
+        it { is_expected.to match content }
+      end
     end
   end
 
@@ -41,7 +45,7 @@ describe 'ini_setting resource' do
     end
 
     describe file(path) do
-      it { should_not be_file }
+      it { is_expected.not_to be_file }
     end
   end
 
@@ -131,12 +135,16 @@ describe 'ini_setting resource' do
       end
 
       describe file("#{tmpdir}/ini_setting.ini") do
-        it { should be_file }
-        its(:content) {
-          should match /four = five/
-          should match /\[one\]/
-          should_not match /two = three/
+        it { is_expected.to be_file }
+
+        describe '#content' do
+          subject { super().content }
+          it {
+          is_expected.to match /four = five/
+          is_expected.not_to match /\[one\]/
+          is_expected.not_to match /two = three/
         }
+        end
       end
     end
 
@@ -169,12 +177,16 @@ describe 'ini_setting resource' do
       end
 
       describe file("#{tmpdir}/ini_setting.ini") do
-        it { should be_file }
-        its(:content) {
-          should_not match /four = five/
-          should match /\[one\]/
-          should match /two = three/
+        it { is_expected.to be_file }
+
+        describe '#content' do
+          subject { super().content }
+          it {
+          is_expected.not_to match /four = five/
+          is_expected.to match /\[one\]/
+          is_expected.to match /two = three/
         }
+        end
       end
     end
   end
@@ -281,4 +293,40 @@ describe 'ini_setting resource' do
       end
     end
   end
+
+  describe 'show_diff parameter and logging:' do
+    [ {:value => "initial_value", :matcher => "created", :show_diff => true},
+      {:value => "public_value", :matcher => /initial_value.*public_value/, :show_diff => true},
+      {:value => "secret_value", :matcher => /redacted sensitive information.*redacted sensitive information/, :show_diff => false},
+      {:value => "md5_value", :matcher => /{md5}881671aa2bbc680bc530c4353125052b.*{md5}ed0903a7fa5de7886ca1a7a9ad06cf51/, :show_diff => :md5}
+    ].each do |i|
+      context "show_diff => #{i[:show_diff]}" do
+        pp = <<-EOS
+          ini_setting { 'test_show_diff':
+            ensure      => present,
+            section     => 'test',
+            setting     => 'something',
+            value       => '#{i[:value]}',
+            path        => "#{tmpdir}/test_show_diff.ini",
+            show_diff   => #{i[:show_diff]} 
+          }
+        EOS
+
+        it "applies manifest and expects changed value to be logged in proper form" do
+          config = {
+            'main' => {
+              'show_diff'   => true
+            }
+          }
+          configure_puppet_on(default, config)
+
+          res = apply_manifest(pp, :expect_changes => true)
+          expect(res.stdout).to match(i[:matcher])
+          expect(res.stdout).not_to match(i[:value]) unless (i[:show_diff] == true)
+
+        end
+      end
+    end
+  end
+
 end
